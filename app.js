@@ -17,9 +17,19 @@ async function downloadWebArchivePage(archiveUrl) {
         await fs.ensureDir(outputDir);
 
         // Download the main HTML page
-        console.log('Downloading main page...💪🤖');
+        console.log('Downloading main page...🤖');
         const response = await axios.get(archiveUrl);
-        const $ = cheerio.load(response.data);
+        let $ = cheerio.load(response.data);
+
+        // Clean up the head section by removing Wayback Machine content
+        const headContent = $.html('head');
+        const cleanedHeadContent = headContent.replace(/<head>[\s\S]*?<!-- End Wayback Rewrite JS Include -->/, '<head>');
+        $('head').replaceWith(cleanedHeadContent);
+
+        // Clean up content after </html>
+        let htmlContent = $.html();
+        htmlContent = htmlContent.replace(/<\/html>[\s\S]*$/, '</html>');
+        $ = cheerio.load(htmlContent);
 
         // Function to fix archive URLs
         const fixArchiveUrl = (url) => {
@@ -34,6 +44,21 @@ async function downloadWebArchivePage(archiveUrl) {
             }
             return url;
         };
+
+        // Add favicon to assets
+        const faviconUrls = new Set();
+        
+        // Check for favicon in link tags
+        $('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]').each((_, elem) => {
+            const href = $(elem).attr('href');
+            if (href) faviconUrls.add(fixArchiveUrl(href));
+        });
+
+        // Add default favicon location if no favicon found in links
+        if (faviconUrls.size === 0) {
+            const defaultFaviconUrl = `https://web.archive.org/web/${timestamp}/http://${domain}/favicon.ico`;
+            faviconUrls.add(defaultFaviconUrl);
+        }
 
         // Function to get relative path for asset
         const getRelativePath = (url) => {
@@ -67,7 +92,7 @@ async function downloadWebArchivePage(archiveUrl) {
         };
 
         // Process and download assets
-        const assets = new Set();
+        const assets = new Set([...faviconUrls]);
         const assetMap = new Map(); // Map to store original URL to local path
 
         // Handle CSS files
@@ -113,7 +138,7 @@ async function downloadWebArchivePage(archiveUrl) {
         });
 
         // Download all assets
-        console.log('Downloading assets...💪🤖');
+        console.log('Downloading assets...🤖');
         for (const assetUrl of assets) {
             try {
                 if (!assetUrl) continue;
@@ -134,7 +159,7 @@ async function downloadWebArchivePage(archiveUrl) {
                     timeout: 10000
                 });
                 await fs.writeFile(localPath, assetResponse.data);
-                console.log(`Downloaded: ${relativePath} 🤖✔`);
+                console.log(`Downloaded: ${relativePath} ✔`);
             } catch (error) {
                 console.error(`Failed to download asset: ${assetUrl} ❌`, error.message);
             }
