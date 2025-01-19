@@ -1,0 +1,27 @@
+{
+  "name": "webarchivedownloader",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VeMeV/WebArchiveDownloader.git"
+  },
+  "keywords": [],
+  "author": "Mev",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/VeMeV/WebArchiveDownloader/issues"
+  },
+  "homepage": "https://github.com/VeMeV/WebArchiveDownloader#readme",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "fs-extra": "^11.3.0",
+    "url-parse": "^1.5.10"
+  }
+}
