@@ -8,7 +8,7 @@ const URLParse = require('url-parse');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Function to download with retries
-async function downloadWithRetry(url, options, maxRetries = 3, delayMs = 10000) {
+async function downloadWithRetry(url, options, maxRetries = 5, delayMs = 10000) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             // Add browser-like headers
@@ -33,7 +33,7 @@ async function downloadWithRetry(url, options, maxRetries = 3, delayMs = 10000) 
             if (attempt === maxRetries) {
                 throw error;
             }
-            console.log(`Attempt ${attempt} failed for ${url}, retrying after ${delayMs}ms...`);
+            console.log(`Attempt ${attempt} failed ❌ for ${url}, retrying after ${delayMs}ms...`);
             await sleep(delayMs);
             // Increase delay for next attempt
             delayMs *= 2;
@@ -63,8 +63,13 @@ async function downloadWebArchivePage(archiveUrl) {
         const cleanedHeadContent = headContent.replace(/<head>[\s\S]*?<!-- End Wayback Rewrite JS Include -->/, '<head>');
         $('head').replaceWith(cleanedHeadContent);
 
-        // Clean up content after </html>
+        // Remove Wayback Toolbar
         let htmlContent = $.html();
+        htmlContent = htmlContent.replace(/<!-- BEGIN WAYBACK TOOLBAR INSERT -->[\s\S]*?<!-- END WAYBACK TOOLBAR INSERT -->/, '');
+        $ = cheerio.load(htmlContent);
+
+        // Clean up content after </html>
+        htmlContent = $.html();
         htmlContent = htmlContent.replace(/<\/html>[\s\S]*$/, '</html>');
         $ = cheerio.load(htmlContent);
 
@@ -176,6 +181,8 @@ async function downloadWebArchivePage(archiveUrl) {
 
         // Download all assets
         console.log('Downloading assets...🤖');
+        const failedDownloads = new Set(); // Track failed downloads
+
         for (const assetUrl of assets) {
             try {
                 if (!assetUrl) continue;
@@ -197,11 +204,20 @@ async function downloadWebArchivePage(archiveUrl) {
                 await fs.writeFile(localPath, assetResponse.data);
                 console.log(`Downloaded: ${relativePath} ✔`);
                 
-                // Add a small delay between downloads to avoid rate limiting
+                // Add 5 seconds delay between downloads to avoid rate limiting
                 await sleep(5000);
             } catch (error) {
                 console.error(`Failed to download asset: ${assetUrl} ❌`, error.message);
+                failedDownloads.add(assetUrl);
             }
+        }
+
+        // Save failed downloads to file if any
+        if (failedDownloads.size > 0) {
+            const failedDownloadsPath = path.join(outputDir, 'failed-downloads.txt');
+            const failedUrlsList = Array.from(failedDownloads).join('\n');
+            await fs.writeFile(failedDownloadsPath, failedUrlsList);
+            console.log(`\n⚠ ${failedDownloads.size} downloads failed. URLs saved to: ${failedDownloadsPath}`);
         }
 
         // Update HTML to use local paths
