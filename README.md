@@ -8,3 +8,6 @@ This is Wayback Machine Downloader or Web Archive Downloader.
 
 ## Usage:
 `node app.js https://web.archive.org/web/20160328000145/http://www.google.com/`
+
+
+*PS: Still needs to remove the tracking code from web.archive.org

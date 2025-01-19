@@ -4,6 +4,43 @@ const fs = require('fs-extra');
 const path = require('path');
 const URLParse = require('url-parse');
 
+// Sleep function to add delay between requests
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Function to download with retries
+async function downloadWithRetry(url, options, maxRetries = 3, delayMs = 10000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            // Add browser-like headers
+            const headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+                'Referer': 'https://web.archive.org/'
+            };
+
+            const response = await axios({
+                ...options,
+                url,
+                headers,
+                timeout: 15000, // Increased timeout
+                maxRedirects: 5
+            });
+
+            return response;
+        } catch (error) {
+            if (attempt === maxRetries) {
+                throw error;
+            }
+            console.log(`Attempt ${attempt} failed for ${url}, retrying after ${delayMs}ms...`);
+            await sleep(delayMs);
+            // Increase delay for next attempt
+            delayMs *= 2;
+        }
+    }
+}
+
 async function downloadWebArchivePage(archiveUrl) {
     try {
         // Create URL parser instance
@@ -18,7 +55,7 @@ async function downloadWebArchivePage(archiveUrl) {
 
         // Download the main HTML page
         console.log('Downloading main page...🤖');
-        const response = await axios.get(archiveUrl);
+        const response = await downloadWithRetry(archiveUrl, {});
         let $ = cheerio.load(response.data);
 
         // Clean up the head section by removing Wayback Machine content
@@ -152,14 +189,16 @@ async function downloadWebArchivePage(archiveUrl) {
                 // Create directory if it doesn't exist
                 await fs.ensureDir(path.dirname(localPath));
 
-                // Download and save the asset
-                const assetResponse = await axios.get(assetUrl, { 
-                    responseType: 'arraybuffer',
-                    maxRedirects: 5,
-                    timeout: 10000
+                // Download and save the asset with retry logic
+                const assetResponse = await downloadWithRetry(assetUrl, { 
+                    responseType: 'arraybuffer'
                 });
+                
                 await fs.writeFile(localPath, assetResponse.data);
                 console.log(`Downloaded: ${relativePath} ✔`);
+                
+                // Add a small delay between downloads to avoid rate limiting
+                await sleep(5000);
             } catch (error) {
                 console.error(`Failed to download asset: ${assetUrl} ❌`, error.message);
             }
@@ -202,6 +241,36 @@ async function downloadWebArchivePage(archiveUrl) {
                     $(elem).attr('srcset', newSrcset);
                 }
             }
+        });
+
+        // Clean up all remaining web archive URLs in href attributes
+        $('[href]').each((_, elem) => {
+            const href = $(elem).attr('href');
+            if (href && href.includes('web.archive.org/web/')) {
+                const cleanUrl = href.replace(/https?:\/\/web\.archive\.org\/web\/\d+\w*\//, '');
+                $(elem).attr('href', cleanUrl);
+            }
+        });
+
+        // Clean up all remaining web archive URLs in src attributes
+        $('[src]').each((_, elem) => {
+            const src = $(elem).attr('src');
+            if (src && src.includes('web.archive.org/web/')) {
+                const cleanUrl = src.replace(/https?:\/\/web\.archive\.org\/web\/\d+\w*\//, '');
+                $(elem).attr('src', cleanUrl);
+            }
+        });
+
+        // Clean up any remaining web archive URLs in any other attributes
+        $('*').each((_, elem) => {
+            const attributes = $(elem).attr();
+            Object.keys(attributes).forEach(attr => {
+                const value = attributes[attr];
+                if (typeof value === 'string' && value.includes('web.archive.org/web/')) {
+                    const cleanUrl = value.replace(/https?:\/\/web\.archive\.org\/web\/\d+\w*\//, '');
+                    $(elem).attr(attr, cleanUrl);
+                }
+            });
         });
 
         // Save the modified HTML file
